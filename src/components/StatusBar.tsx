@@ -1,4 +1,4 @@
-import { Radar, WifiOff, Clock, Shield } from "lucide-react";
+import { Radar, Clock, Shield } from "lucide-react";
 
 interface StatusBarProps {
   isScanning: boolean;
