@@ -1,15 +1,5 @@
-import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import type { WifiSignal, BleDevice, ThreatLevel } from "@/lib/mockData";
-
-interface RadarBlip {
-  id: string;
-  x: number;
-  y: number;
-  threatLevel: ThreatLevel;
-  rssi: number;
-  label: string;
-}
+import { type WifiSignal, type BleDevice } from "@/lib/mockData";
 
 interface SatelliteRadarProps {
   wifiSignals: WifiSignal[];
@@ -19,130 +9,85 @@ interface SatelliteRadarProps {
   onBlipClick: (id: string) => void;
 }
 
-function rssiToDistance(rssi: number): number {
-  // Map RSSI (-30 to -90) to distance from center (0.1 to 0.9)
-  const normalized = Math.min(1, Math.max(0, (Math.abs(rssi) - 30) / 60));
-  return 0.1 + normalized * 0.8;
-}
-
-function getThreatColor(level: ThreatLevel): string {
-  if (level === "red") return "#ff3333";
-  if (level === "yellow") return "#ffaa00";
-  return "#00FF41";
-}
-
-export default function SatelliteRadar({ wifiSignals, bleDevices, isScanning, selectedId, onBlipClick }: SatelliteRadarProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const blips: RadarBlip[] = [
-    ...wifiSignals.map((s, i) => ({
-      id: s.id,
-      x: Math.cos((i * 2.4 + 0.5) * Math.PI) * rssiToDistance(s.rssi),
-      y: Math.sin((i * 2.4 + 0.5) * Math.PI) * rssiToDistance(s.rssi),
-      threatLevel: s.threatLevel,
-      rssi: s.rssi,
-      label: s.ssid,
-    })),
-    ...bleDevices.map((d, i) => ({
-      id: d.id,
-      x: Math.cos((i * 3.1 + 1.2) * Math.PI) * rssiToDistance(d.rssi),
-      y: Math.sin((i * 3.1 + 1.2) * Math.PI) * rssiToDistance(d.rssi),
-      threatLevel: d.threatLevel,
-      rssi: d.rssi,
-      label: d.name,
-    })),
-  ];
+export default function SatelliteRadar({
+  wifiSignals,
+  bleDevices,
+  isScanning,
+  selectedId,
+  onBlipClick,
+}: SatelliteRadarProps) {
+  // Safe extraction of nodes to prevent crashes
+  const allNodes = [...(wifiSignals || []), ...(bleDevices || [])];
 
   return (
-    <div ref={containerRef} className="cyber-panel aspect-square w-full max-w-[400px] mx-auto relative">
-      <svg viewBox="-1.1 -1.1 2.2 2.2" className="w-full h-full relative z-10">
-        {/* Grid rings */}
-        {[0.25, 0.5, 0.75, 1].map((r) => (
-          <circle key={r} cx="0" cy="0" r={r} fill="none" stroke="hsl(120 100% 50% / 0.1)" strokeWidth="0.005" />
+    <div className="relative aspect-square w-full max-w-[400px] mx-auto bg-[#050505] rounded-full border-2 border-primary/20 overflow-hidden shadow-[0_0_30px_rgba(0,255,65,0.05)]">
+      
+      {/* 1. MAP GRID (The "Background") */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+        <div className="absolute w-full h-[1px] bg-primary" />
+        <div className="absolute h-full w-[1px] bg-primary" />
+        {[0.25, 0.5, 0.75].map((scale) => (
+          <div
+            key={scale}
+            className="absolute border border-primary rounded-full"
+            style={{ width: `${scale * 100}%`, height: `${scale * 100}%` }}
+          />
         ))}
-        {/* Cross lines */}
-        <line x1="-1" y1="0" x2="1" y2="0" stroke="hsl(120 100% 50% / 0.08)" strokeWidth="0.003" />
-        <line x1="0" y1="-1" x2="0" y2="1" stroke="hsl(120 100% 50% / 0.08)" strokeWidth="0.003" />
-        <line x1="-0.707" y1="-0.707" x2="0.707" y2="0.707" stroke="hsl(120 100% 50% / 0.05)" strokeWidth="0.003" />
-        <line x1="-0.707" y1="0.707" x2="0.707" y2="-0.707" stroke="hsl(120 100% 50% / 0.05)" strokeWidth="0.003" />
-
-        {/* Sweep arm */}
-        {isScanning && (
-          <g>
-            <defs>
-              <linearGradient id="sweepGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0.95" y2="0">
-                <stop offset="0%" stopColor="hsl(120 100% 50% / 0.05)" />
-                <stop offset="60%" stopColor="hsl(120 100% 50% / 0.15)" />
-                <stop offset="100%" stopColor="hsl(120 100% 50% / 0.5)" />
-              </linearGradient>
-            </defs>
-            <g style={{ animation: "radar-sweep 3s linear infinite", transformOrigin: "center" }}>
-              {/* Trailing cone (~30 degrees behind the sweep line) */}
-              <path d="M0,0 L1,0 A1,1 0 0,0 0.866,-0.5 Z" fill="url(#sweepGrad)" opacity="0.4" />
-              {/* Main sweep line */}
-              <line x1="0" y1="0" x2="0.98" y2="0" stroke="#00FF41" strokeWidth="0.006" opacity="0.9" />
-            </g>
-          </g>
-        )}
-
-        {/* Center dot */}
-        <circle cx="0" cy="0" r="0.02" fill="#00FF41" opacity="0.9">
-          {isScanning && <animate attributeName="r" values="0.02;0.035;0.02" dur="2s" repeatCount="indefinite" />}
-        </circle>
-
-        {/* Blips */}
-        {blips.map((blip) => (
-          <g
-            key={blip.id}
-            onClick={() => onBlipClick(blip.id)}
-            className="cursor-pointer"
-            style={{ animation: "blip-appear 0.5s ease-out forwards" }}
-          >
-            <circle
-              cx={blip.x}
-              cy={blip.y}
-              r={selectedId === blip.id ? 0.04 : 0.025}
-              fill={getThreatColor(blip.threatLevel)}
-              opacity={selectedId === blip.id ? 1 : 0.8}
-            >
-              <animate
-                attributeName="opacity"
-                values={blip.threatLevel === "red" ? "0.4;1;0.4" : "0.6;0.9;0.6"}
-                dur={blip.threatLevel === "red" ? "0.8s" : "2s"}
-                repeatCount="indefinite"
-              />
-            </circle>
-            {selectedId === blip.id && (
-              <circle
-                cx={blip.x}
-                cy={blip.y}
-                r="0.06"
-                fill="none"
-                stroke={getThreatColor(blip.threatLevel)}
-                strokeWidth="0.005"
-                opacity="0.5"
-              >
-                <animate attributeName="r" values="0.04;0.08;0.04" dur="1.5s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.5;0.1;0.5" dur="1.5s" repeatCount="indefinite" />
-              </circle>
-            )}
-          </g>
-        ))}
-      </svg>
-
-      {/* Scanline overlay */}
-      <div className="absolute inset-0 scanline-overlay z-20" />
-
-      {/* Corner decorations */}
-      <div className="absolute top-1 left-1 w-4 h-4 border-t border-l border-primary opacity-40 z-20" />
-      <div className="absolute top-1 right-1 w-4 h-4 border-t border-r border-primary opacity-40 z-20" />
-      <div className="absolute bottom-1 left-1 w-4 h-4 border-b border-l border-primary opacity-40 z-20" />
-      <div className="absolute bottom-1 right-1 w-4 h-4 border-b border-r border-primary opacity-40 z-20" />
-
-      {/* Status label */}
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] text-primary opacity-60 tracking-[0.3em] z-20">
-        {isScanning ? "SCANNING" : "STANDBY"}
       </div>
+
+      {/* 2. THE CINEMATIC 360° SWEEP */}
+      {isScanning && (
+        <motion.div
+          className="absolute inset-0 z-10 pointer-events-none"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+          style={{
+            // Clean conic gradient centered in the circle
+            background: "conic-gradient(from 0deg at 50% 50%, rgba(0, 255, 65, 0.2) 0deg, transparent 90deg)"
+          }}
+        >
+          {/* The Leading "Scanning" Line */}
+          <div className="absolute top-0 left-1/2 w-[2px] h-1/2 bg-primary shadow-[0_0_15px_#00FF41]" />
+        </motion.div>
+      )}
+
+      {/* 3. SIGNAL BLIPS (Entities) */}
+      <div className="absolute inset-0 z-20">
+        {allNodes.map((node) => {
+          // Fallback values to prevent NaN crashes
+          const rssi = node.rssi || -100;
+          const id = node.id || "00:00";
+          
+          // Math: Convert RSSI to distance (Center = -30dBm, Edge = -90dBm)
+          const distance = Math.min(Math.max((rssi + 30) * -1.2, 5), 45);
+          
+          // Math: Generate a persistent angle based on the MAC address
+          const hash = id.split(':').reduce((acc, part) => acc + parseInt(part, 16), 0);
+          const angle = hash % 360;
+          
+          const x = 50 + distance * Math.cos((angle * Math.PI) / 180);
+          const y = 50 + distance * Math.sin((angle * Math.PI) / 180);
+
+          return (
+            <motion.button
+              key={id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              onClick={() => onBlipClick(id)}
+              className={`absolute w-2.5 h-2.5 rounded-full -translate-x-1/2 -translate-y-1/2 border border-white/20
+                ${node.threatLevel === 'red' ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' : 
+                  node.threatLevel === 'yellow' ? 'bg-yellow-500 shadow-[0_0_10px_#f59e0b]' : 
+                  'bg-primary shadow-[0_0_10px_#00FF41]'}
+                ${selectedId === id ? 'ring-2 ring-white scale-150 z-30' : 'z-20'}
+              `}
+              style={{ left: `${x}%`, top: `${y}%` }}
+            />
+          );
+        })}
+      </div>
+
+      {/* 4. OVERLAY SCANLINE */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_50%,black_100%)] opacity-40 pointer-events-none" />
     </div>
   );
 }
